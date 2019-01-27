@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-
-#include <wsclient/wsclient.h>
+#include "wsclient.h"
 
 int onclose(wsclient *c) {
 	fprintf(stderr, "onclose called: %d\n", c->sockfd);

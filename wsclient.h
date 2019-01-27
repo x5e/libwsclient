@@ -8,15 +8,9 @@
 #include <sys/un.h>
 #include <stddef.h>
 
-#include "config.h"
-
-
-#ifdef HAVE_LIBSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/crypto.h>
-#endif
-
 
 
 #define FRAME_CHUNK_LENGTH 1024
@@ -109,10 +103,8 @@ typedef struct _wsclient {
 	wsclient_frame *current_frame;
 	struct sockaddr_un helper_sa;
 	int helper_sock;
-#ifdef HAVE_LIBSSL
 	SSL_CTX *ssl_ctx;
 	SSL *ssl;
-#endif
 } wsclient;
 
 
@@ -136,6 +128,9 @@ void libwsclient_dispatch_message(wsclient *c, wsclient_frame *current);
 void libwsclient_close(wsclient *c);
 int libwsclient_helper_socket(wsclient *c, const char *path);
 void *libwsclient_helper_socket_thread(void *ptr);
+int libwsclient_send(wsclient *client, char *strdata);
+void libwsclient_onopen(wsclient *client, int (*cb)(wsclient *c));
+void libwsclient_onmessage(wsclient *client, int (*cb)(wsclient *c, wsclient_message *msg));
 
 //Define errors
 char *errors[] = {
