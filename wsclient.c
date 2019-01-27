@@ -12,9 +12,6 @@
 #include <signal.h>
 
 
-
-#include <pthread.h>
-
 #include "wsclient.h"
 #include "sha1.h"
 int libwsclient_send_fragment(wsclient *client, char *strdata, int len, int flags);
@@ -23,7 +20,6 @@ int base64_encode(unsigned char *source, size_t sourcelen, char *target, size_t 
 
 void libwsclient_run(wsclient *c) {
 	if(c->flags & CLIENT_CONNECTING) {
-		pthread_join(c->handshake_thread, NULL);
 		pthread_mutex_lock(&c->lock);
 		c->flags &= ~CLIENT_CONNECTING;
 		free(c->URI);
@@ -471,15 +467,6 @@ wsclient *libwsclient_new(const char *URI) {
 		exit(WS_EXIT_MALLOC);
 	}
 	memset(client, 0, sizeof(wsclient));
-	if(pthread_mutex_init(&client->lock, NULL) != 0) {
-		fprintf(stderr, "Unable to init mutex in libwsclient_new.\n");
-		exit(WS_EXIT_PTHREAD_MUTEX_INIT);
-	}
-	if(pthread_mutex_init(&client->send_lock, NULL) != 0) {
-		fprintf(stderr, "Unable to init send lock in libwsclient_new.\n");
-		exit(WS_EXIT_PTHREAD_MUTEX_INIT);
-	}
-	pthread_mutex_lock(&client->lock);
 	client->URI = (char *)malloc(strlen(URI)+1);
 	if(!client->URI) {
 		fprintf(stderr, "Unable to allocate memory in libwsclient_new.\n");
@@ -488,12 +475,8 @@ wsclient *libwsclient_new(const char *URI) {
 	memset(client->URI, 0, strlen(URI)+1);
 	strncpy(client->URI, URI, strlen(URI));
 	client->flags |= CLIENT_CONNECTING;
-	pthread_mutex_unlock(&client->lock);
 
-	if(pthread_create(&client->handshake_thread, NULL, libwsclient_handshake_thread, (void *)client)) {
-		fprintf(stderr, "Unable to create handshake thread.\n");
-		exit(WS_EXIT_PTHREAD_CREATE);
-	}
+    libwsclient_handshake_thread((void*) client);
 	return client;
 }
 void *libwsclient_handshake_thread(void *ptr) {
@@ -538,9 +521,7 @@ void *libwsclient_handshake_thread(void *ptr) {
 		strncpy(port, "80", 9);
 	} else {
 		strncpy(port, "443", 9);
-		pthread_mutex_lock(&client->lock);
 		client->flags |= CLIENT_IS_SSL;
-		pthread_mutex_unlock(&client->lock);
 	}
 	for(i=p-URI_copy+3,z=0;*(URI_copy+i) != '/' && *(URI_copy+i) != ':' && *(URI_copy+i) != '\0';i++,z++) {
 		host[z] = *(URI_copy+i);
@@ -587,9 +568,7 @@ void *libwsclient_handshake_thread(void *ptr) {
 		SSL_connect(client->ssl);
 	}
 
-	pthread_mutex_lock(&client->lock);
 	client->sockfd = sockfd;
-	pthread_mutex_unlock(&client->lock);
 	//perform handshake
 	//generate nonce
 	srand(time(NULL));
@@ -717,9 +696,7 @@ void *libwsclient_handshake_thread(void *ptr) {
 	}
 
 
-	pthread_mutex_lock(&client->lock);
 	client->flags &= ~CLIENT_CONNECTING;
-	pthread_mutex_unlock(&client->lock);
 	if(client->onopen != NULL) {
 		client->onopen(client);
 	}
@@ -1036,12 +1013,10 @@ int libwsclient_send(wsclient *client, char *strdata)  {
 	sent = 0;
 	i = 0;
 
-	pthread_mutex_lock(&client->send_lock);
 	while(sent < frame_size && i >= 0) {
 		i = _libwsclient_write(client, data+sent, frame_size - sent);
 		sent += i;
 	}
-	pthread_mutex_unlock(&client->send_lock);
 
 	if(i < 0) {
 		if(client->onerror) {
